@@ -25,6 +25,11 @@ if [ "x$FOREMAN_PROVISIONING" = "x" ]; then
   FOREMAN_PROVISIONING=true
 fi
 
+# Use FOREMAN_BMCING to enable IPMI
+if [ "x$FOREMAN_BMCING" = "x" ]; then
+  FOREMAN_BMCING=false
+fi
+
 # FOREMAN_GATEWAY must be set when using foreman for provisioning
 if [ "$FOREMAN_PROVISIONING" = "true" ]; then
 if [ "x$FOREMAN_GATEWAY" = "x" ]; then
@@ -76,9 +81,15 @@ if [ "$FOREMAN_PROVISIONING" = "true" ]; then
   PRIMARY_INT=$(route|grep default|awk ' { print ( $(NF) ) }')
   PRIMARY_PREFIX=$(facter network_${PRIMARY_INT} | cut -d. -f1-3)
  
-  # If no provisioning interface specified, guess it's "the next one" 
   if [ "x$PROVISIONING_INTERFACE" = "x" ]; then
-    PROVISIONING_INTERFACE=$(facter -p|grep ipaddress_|grep -Ev "_lo|$PRIMARY_INT"|awk -F"[_ ]" '{print $2;exit 0}')
+    if [ "${FOREMAN_BMCING}" = "true" ]; then
+      # figure NIC2 is on the IPMI interface and since most servers only have 
+      # two NICs, NIC1 will be the provisioning/tftp interface
+      PROVISIONING_INTERFACE=${PRIMARY_INT}
+    else
+      # guess it's "the next one" after the primary
+      PROVISIONING_INTERFACE=$(facter -p|grep ipaddress_|grep -Ev "_lo|$PRIMARY_INT"|awk -F"[_ ]" '{print $2;exit 0}')
+    fi
   fi
 
   # the string for this interface that facter expects
@@ -91,7 +102,11 @@ if [ "$FOREMAN_PROVISIONING" = "true" ]; then
     echo "This installer can not determine the interface to provision over."
     exit 1
   fi     
-  PROVISIONING_REVERSE=$(echo "$PROVISIONING_PREFIX" | ( IFS='.' read a b c ; echo "$c.$b.$a.in-addr.arpa" ))
+  if [ "${FOREMAN_BMCING}" = "true" ]; then
+    PROVISIONING_REVERSE=$(echo "$PROVISIONING_PREFIX" | ( IFS='.' read a b c ; echo "$b.$a.in-addr.arpa" ))
+  else
+    PROVISIONING_REVERSE=$(echo "$PROVISIONING_PREFIX" | ( IFS='.' read a b c ; echo "$c.$b.$a.in-addr.arpa" ))
+  fi
   FORWARDER=$(augtool get /files/etc/resolv.conf/nameserver[1] | awk '{printf $NF}')
 fi
 
@@ -125,7 +140,7 @@ class { 'puppet':
     '$OPENSTACK_PUPPET_HOME/modules',
   ],
 }
-include passenger
+include apache::mod::passenger
 class { 'foreman':
   db_type => 'mysql',
   custom_repo => true
@@ -140,6 +155,7 @@ EOM
 
 if [ "$FOREMAN_PROVISIONING" = "true" ]; then
 cat >> installer.pp << EOM
+  tftp             => true,
   tftp_servername  => '$(facter ipaddress_${FACTER_PROV_INTERFACE})',
   dhcp             => true,
   dhcp_gateway     => '${FOREMAN_GATEWAY}',
@@ -150,6 +166,8 @@ cat >> installer.pp << EOM
   dns_reverse      => '${PROVISIONING_REVERSE}',
   dns_forwarders   => ['${FORWARDER}'],
   dns_interface    => '${FACTER_PROV_INTERFACE}',
+
+  bmc              => ${FOREMAN_BMCING},
 }
 EOM
 
