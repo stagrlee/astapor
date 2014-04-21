@@ -15,21 +15,6 @@ class quickstack::horizon(
 
   include ::memcached
 
-  # horizon packages
-  package {'python-memcached':
-    ensure => installed,
-  }~>
-  package {'python-netaddr':
-    ensure => installed,
-    notify => Class['::horizon'],
-  }
-
-  file {'/etc/httpd/conf.d/rootredirect.conf':
-    ensure  => present,
-    content => 'RedirectMatch ^/$ /dashboard/',
-    notify  => File['/etc/httpd/conf.d/openstack-dashboard.conf'],
-  }
-
   class {'::horizon':
     bind_address          => $bind_address,
     cache_server_ip       => $cache_server_ip,
@@ -46,14 +31,6 @@ class quickstack::horizon(
   # patch our horizon/apache config to avoid duplicate port 80
   # directive.  TODO: remove this once puppet-horizon/apache can
   # handle it.
-  file_line { 'undo_httpd_listen_on_bind_address_80':
-    path    => $::horizon::params::httpd_listen_config_file,
-    match   => "^.*Listen ${bind_address}:?80$",
-    line    => "#Listen ${bind_address}:80",
-    require => Package['horizon'],
-    notify  => Service[$::horizon::params::http_service],
-  }
-  File_line['httpd_listen_on_bind_address_80'] -> File_line['undo_httpd_listen_on_bind_address_80']
 
   file_line { 'ports_listen_on_bind_address_80':
     path    => $::apache::params::ports_file,
@@ -66,13 +43,6 @@ class quickstack::horizon(
   concat::fragment['Apache ports header'] ->
   File_line['ports_listen_on_bind_address_80']
   # TODO: add a file_line to set array of memcached servers
-
-  if ($::selinux != "false"){
-    selboolean { 'httpd_can_network_connect':
-      value => on,
-      persistent => true,
-    }
-  }
 
   class {'::quickstack::firewall::horizon':}
 }

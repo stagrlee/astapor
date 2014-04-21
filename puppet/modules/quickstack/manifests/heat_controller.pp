@@ -19,12 +19,15 @@ class quickstack::heat_controller(
 
   class {"heat::keystone::auth":
       password => $heat_user_password,
-      heat_public_address => $controller_pub_host,
-      heat_admin_address => $controller_admin_host,
-      heat_internal_address => $controller_priv_host,
-      cfn_public_address => $controller_pub_host,
-      cfn_admin_address => $controller_admin_host,
-      cfn_internal_address => $controller_priv_host,
+      public_address => $controller_pub_host,
+      admin_address => $controller_admin_host,
+      internal_address => $controller_priv_host,
+  }
+
+  if str2bool_i("$ssl") {
+    $sql_connection = "mysql://heat:${heat_db_password}@${mysql_host}/heat?ssl_ca=${mysql_ca}"
+  } else {
+    $sql_connection = "mysql://heat:${heat_db_password}@${mysql_host}/heat"
   }
 
   class { 'heat':
@@ -38,6 +41,7 @@ class quickstack::heat_controller(
       qpid_username     => $qpid_username,
       qpid_password     => $qpid_password,
       verbose           => $verbose,
+      sql_connection    => $sql_connection,
   }
 
   class { 'heat::api_cfn':
@@ -49,6 +53,7 @@ class quickstack::heat_controller(
   }
 
   class { 'heat::engine':
+      auth_encryption_key           => $heat_user_password,
       heat_metadata_server_url      => "http://${controller_priv_host}:8000",
       heat_waitcondition_server_url => "http://${controller_priv_host}:8000/v1/waitcondition",
       heat_watch_server_url         => "http://${controller_priv_host}:8003",
@@ -57,16 +62,6 @@ class quickstack::heat_controller(
   class { 'heat::db::mysql':
       password => $heat_db_password,
       allowed_hosts => "%%",
-  }
-
-  if str2bool_i("$ssl") {
-    $sql_connection = "mysql://heat:${heat_db_password}@${mysql_host}/heat?ssl_ca=${mysql_ca}"
-  } else {
-    $sql_connection = "mysql://heat:${heat_db_password}@${mysql_host}/heat"
-  }
-
-  class { 'heat::db':
-      sql_connection => $sql_connection,
   }
 
   class { 'heat::api':

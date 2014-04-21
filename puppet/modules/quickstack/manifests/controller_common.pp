@@ -358,8 +358,6 @@ class quickstack::controller_common (
   }
   File_line['httpd_listen_on_bind_address_80'] -> File_line['undo_httpd_listen_on_bind_address_80']
 
-  class {'memcached':}
-
   firewall { '001 controller incoming':
     proto    => 'tcp',
     dport    => ['80', '443', '3260', '3306', '5000', '35357', '5672', '8773', '8774', '8775', '8776', '8777', '9292', '6080'],
